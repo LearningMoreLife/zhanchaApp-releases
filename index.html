@@ -15,9 +15,14 @@
     GitHub Pages        公开下载仓库的 index.html
                         https://learningmorelife.github.io/zhanchaApp-releases/
 
+  改完这个文件要两边都更新：Worker 跑 node tool/download-page/build.js 重新
+  build 再部署；Pages 要把同一份内容重新传成公开下载仓库根目录的 index.html。
+  两个地方现在都是手工同步，等发版流程定了再让 CI 一起做。
+
   为什么不放缤纷云：国内对象存储对 HTML 一律回 Content-Disposition:
-  attachment（默认域名不准当网站用，要备案域名走静态 CDN），页面会被
-  下载成一个文件，而不是打开。
+  attachment（默认域名不准当网站用，要备案域名走静态 CDN，响应头里那句
+  X-Bitiful-Force-Attachment: true 就是它），页面会被下载成一个文件，
+  而不是打开。
 
   页面本身是纯静态的：版本号、包大小、下载地址、更新说明都在浏览器里从
   latest.json 现取，所以发版不用改这张页面。清单源按下面的顺序试——先同源
