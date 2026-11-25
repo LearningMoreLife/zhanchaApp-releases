@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#33636b">
+<meta name="description" content="占察计数助手 · 安卓安装包下载">
+<meta name="format-detection" content="telephone=no">
+<title>占察计数助手 · 下载</title>
+<!--
+  新用户扫码后的落地页。同一个文件有两个家，内容完全一样：
+
+    Cloudflare Worker   tool/download-page/worker.js 把这份页面内联进去，
+                        /latest.json 也由它代理，同源，最省事
+    GitHub Pages        公开下载仓库的 index.html
+                        https://learningmorelife.github.io/zhanchaApp-releases/
+
+  为什么不放缤纷云：国内对象存储对 HTML 一律回 Content-Disposition:
+  attachment（默认域名不准当网站用，要备案域名走静态 CDN），页面会被
+  下载成一个文件，而不是打开。
+
+  页面本身是纯静态的：版本号、包大小、下载地址、更新说明都在浏览器里从
+  latest.json 现取，所以发版不用改这张页面。清单源按下面的顺序试——先同源
+  （Worker 上就是这个），同源没有再找缤纷云（桶的 CORS 是 *，Pages 上也能读）。
+  latest.json 由 CI 生成，里面的 urls 已经按 CNB → R2 → GitHub 排好序。
+
+  文件末尾两个常量只在「清单取不到」时当兜底链接用，改仓库名要一起改。
+-->
+<style>
+  :root {
+    --paper: #faf8f4;
+    --card: #ffffff;
+    --ink: #24211d;
+    --muted: #6d665d;
+    --line: #e8e2d9;
+    --brand: #33636b;
+    --brand-deep: #27505a;
+    --brand-soft: #eef3f3;
+    --warn-bg: #fdf4e3;
+    --warn-line: #efdfbe;
+    --warn-ink: #7a5a17;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16181a;
+      --card: #1e2124;
+      --ink: #ece8e1;
+      --muted: #a09a91;
+      --line: #2f3336;
+      --brand: #7fb3b8;
+      --brand-deep: #9cc6ca;
+      --brand-soft: #263033;
+      --warn-bg: #2b2418;
+      --warn-line: #473a22;
+      --warn-ink: #e0c48a;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC",
+                 "Noto Sans CJK SC", sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-text-size-adjust: 100%;
+    padding: 28px 18px 48px;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; }
+
+  /* 顶部：App 名 */
+  .head { text-align: center; margin-bottom: 20px; }
+  .head h1 {
+    font-family: "Songti SC", "STSong", "SimSun", "Source Han Serif SC", serif;
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    margin: 0 0 4px;
+  }
+  .head p { margin: 0; color: var(--muted); font-size: 13.5px; letter-spacing: 0.02em; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+
+  /* 版本行 */
+  .ver { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .ver strong { font-size: 20px; font-weight: 650; letter-spacing: 0.01em; }
+  .ver span { color: var(--muted); font-size: 13.5px; }
+
+  .btn {
+    display: block;
+    margin: 14px 0 0;
+    padding: 15px 20px;
+    background: var(--brand);
+    color: #fff;
+    text-align: center;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    border-radius: 12px;
+    border: 0;
+    width: 100%;
+    transition: background .15s ease;
+  }
+  .btn:active { background: var(--brand-deep); }
+  .btn[aria-disabled="true"] {
+    background: var(--line);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .under { margin: 10px 0 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* 提示条 */
+  .notice {
+    display: none;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    color: var(--warn-ink);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  .notice.show { display: block; }
+  .notice b { font-weight: 650; }
+
+  h2 {
+    font-size: 14.5px;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+  ol.steps li {
+    counter-increment: s;
+    position: relative;
+    padding-left: 28px;
+    margin-bottom: 8px;
+    font-size: 14.5px;
+    color: var(--ink);
+  }
+  ol.steps li:last-child { margin-bottom: 0; }
+  ol.steps li::before {
+    content: counter(s);
+    position: absolute;
+    left: 0; top: 3px;
+    width: 19px; height: 19px;
+    border-radius: 50%;
+    background: var(--brand-soft);
+    color: var(--brand);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 19px;
+    text-align: center;
+  }
+  ol.steps em { font-style: normal; color: var(--brand); font-weight: 600; }
+
+  details { margin-top: 2px; }
+  details > summary {
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--muted);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform .15s ease;
+    margin-right: 2px;
+  }
+  details[open] > summary::before { transform: rotate(45deg); }
+
+  .arch { margin: 8px 0 2px; padding: 0; list-style: none; }
+  .arch li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 14px; }
+  .arch li + li { border-top: 1px dashed var(--line); }
+  .arch a { color: var(--brand); text-decoration: none; }
+  .arch small { color: var(--muted); }
+
+  /* 更新说明 */
+  #notes { font-size: 14.5px; color: var(--ink); max-height: 320px; overflow-y: auto; padding-bottom: 2px; }
+  #notes h3 {
+    font-size: 14px;
+    font-weight: 650;
+    color: var(--brand);
+    margin: 12px 0 6px;
+    letter-spacing: 0.04em;
+  }
+  #notes h3:first-child { margin-top: 6px; }
+  #notes ul { margin: 0 0 10px; padding-left: 18px; }
+  #notes li { margin-bottom: 5px; }
+  #notes code {
+    background: var(--brand-soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+
+  .links { margin: 0; padding: 0; list-style: none; }
+  .links li { padding: 8px 0; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
+  .links li + li { border-top: 1px dashed var(--line); }
+  .links a { color: var(--brand); text-decoration: none; }
+  .links small { color: var(--muted); font-size: 12.5px; }
+
+  .fallback-note { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.9;
+    margin-top: 22px;
+  }
+  footer .dot { opacity: .45; margin: 0 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <h1>占察计数助手</h1>
+    <p>佛教占察计数与轮相查询助手</p>
+  </div>
+
+  <div class="notice" id="wx">
+    <b>微信里打不开安装包下载。</b>点右上角「···」，选「在浏览器打开」，再点下载。
+  </div>
+  <div class="notice" id="ios">
+    <b>目前只有 Android 版。</b>iPhone 上暂时装不了，可以先收藏这个页面。
+  </div>
+  <div class="notice" id="harmony">
+    <b>这个浏览器多半是鸿蒙 NEXT。</b>它不能安装 Android 安装包；请用一台普通安卓手机下载安装。
+  </div>
+
+  <div class="card">
+    <div class="ver">
+      <strong id="ver">版本 —</strong>
+      <span id="meta">正在取最新版本…</span>
+    </div>
+    <a class="btn" id="dl" href="#" aria-disabled="true">下载安装包</a>
+    <p class="under" id="under">Android 手机 · 无需登录 · 数据都存在本机</p>
+
+    <details id="arch-box" hidden>
+      <summary>其他机型 / 模拟器</summary>
+      <ul class="arch" id="arch"></ul>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>怎么装</h2>
+    <ol class="steps">
+      <li>点上面的「下载安装包」，等浏览器下完（约 20MB）。</li>
+      <li>如果提示「这类文件可能会损害您的设备」，选 <em>仍然下载</em>。</li>
+      <li>打开安装包时若提示「禁止安装未知应用」，按提示允许一次（只会问这一次）。</li>
+    </ol>
+  </div>
+
+  <div class="card" id="notes-card" hidden>
+    <h2>这次更新了什么</h2>
+    <details id="notes-box">
+      <summary>v — 的更新说明</summary>
+      <div id="notes"></div>
+    </details>
+  </div>
+
+  <div class="card" id="fallback">
+    <h2>下载不顺利？</h2>
+    <ul class="links" id="mirrors"></ul>
+    <ul class="links">
+      <li><a id="gh" href="#">GitHub 上的全部版本</a><small>海外线路，可能较慢</small></li>
+      <li><a id="cnb" href="#">CNB 上的全部版本</a><small>国内线路</small></li>
+    </ul>
+    <p class="fallback-note" id="fallback-note">下载卡住或者点了没反应，换上面任意一条地址试试；文件名里的 arm64-v8a 是给绝大多数手机的。</p>
+  </div>
+
+  <footer>
+    <span id="foot">占察计数助手</span><br>
+    <span class="dot">·</span>不收集数据，不上传任何内容
+  </footer>
+
+  <noscript>
+    <div class="card">
+      <h2>这个页面需要 JavaScript</h2>
+      <p style="font-size:14px;margin:0">脚本被关掉了，取不到下载地址。可以直接去
+        <a href="https://github.com/LearningMoreLife/zhanchaApp-releases/releases/latest">GitHub 发布页</a>
+        下载 <code>arm64-v8a</code> 那个包。</p>
+    </div>
+  </noscript>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // 清单取不到时的兜底入口（静态常量，改仓库要一起改）
+  var GITHUB_RELEASES = "https://github.com/LearningMoreLife/zhanchaApp-releases/releases";
+  var CNB_RELEASES = "https://cnb.cool/letcodeflyaway/zhanchaApp-release/-/releases";
+
+  var PRIMARY_ABI = "arm64-v8a";
+  var ABI_LABEL = {
+    "arm64-v8a": "64 位（常见手机）",
+    "armeabi-v7a": "32 位（较老的手机）",
+    "x86_64": "x86 模拟器"
+  };
+  var HOST_LABEL = [
+    { test: /(^|\.)cnb\.cool$/, label: "CNB · 国内线路" },
+    { test: /(^|\.)r2\.dev$/, label: "Cloudflare · 海外" },
+    { test: /(^|\.)github\.com$/, label: "GitHub · 海外" }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function showNotice(id) { var el = $(id); if (el) el.classList.add("show"); }
+
+  function fmtSize(bytes) {
+    if (!bytes) return "";
+    return (bytes / 1048576).toFixed(1) + " MB";
+  }
+
+  function hostLabel(url) {
+    var host = "";
+    try { host = new URL(url).hostname; } catch (e) { return "下载地址"; }
+    for (var i = 0; i < HOST_LABEL.length; i++) {
+      if (HOST_LABEL[i].test.test(host)) return HOST_LABEL[i].label;
+    }
+    return host;
+  }
+
+  function fileName(url) {
+    try { return decodeURIComponent(new URL(url).pathname.split("/").pop()); }
+    catch (e) { return ""; }
+  }
+
+  // 极简 markdown：只认二级标题、无序列表、粗体、行内代码。
+  // 更新说明（release-notes/*.md）就是这几种，多余的能力不值得引一个库。
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function renderNotes(md) {
+    var out = [];
+    var inList = false;
+    var lines = String(md).replace(/\r\n/g, "\n").split("\n");
+
+    function inline(s) {
+      return escapeHtml(s)
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    }
+
+    function closeList() { if (inList) { out.push("</ul>"); inList = false; } }
+
+    lines.forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) { closeList(); return; }
+      if (/^#{1,6}\s+/.test(line)) {
+        closeList();
+        out.push("<h3>" + inline(line.replace(/^#{1,6}\s+/, "")) + "</h3>");
+        return;
+      }
+      if (/^[-*]\s+/.test(line)) {
+        if (!inList) { out.push("<ul>"); inList = true; }
+        out.push("<li>" + inline(line.replace(/^[-*]\s+/, "")) + "</li>");
+        return;
+      }
+      closeList();
+      out.push("<p>" + inline(line) + "</p>");
+    });
+    closeList();
+    return out.join("");
+  }
+
+  function mirrorList(abi) {
+    var list = $("mirrors");
+    list.innerHTML = "";
+    (abi.urls || []).forEach(function (url) {
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = url;
+      a.textContent = hostLabel(url);
+      a.setAttribute("rel", "noopener");
+      var small = document.createElement("small");
+      small.textContent = fileName(url).replace(/^zhanchaApp-/, "");
+      li.appendChild(a);
+      li.appendChild(small);
+      list.appendChild(li);
+    });
+  }
+
+  function archList(manifest) {
+    var ul = $("arch");
+    var abis = Object.keys(manifest.abi || {});
+    var others = abis.filter(function (a) { return a !== PRIMARY_ABI; });
+    if (!others.length) return;
+
+    ul.innerHTML = "";
+    others.forEach(function (abi) {
+      var pkg = manifest.abi[abi];
+      var url = (pkg.urls || [])[0];
+      if (!url) return;
+      var li = document.createElement("li");
+      var left = document.createElement("span");
+      left.innerHTML = "<a></a> <small></small>";
+      left.querySelector("a").href = url;
+      left.querySelector("a").textContent = ABI_LABEL[abi] || abi;
+      left.querySelector("small").textContent = abi;
+      var right = document.createElement("small");
+      right.textContent = fmtSize(pkg.size);
+      li.appendChild(left);
+      li.appendChild(right);
+      ul.appendChild(li);
+    });
+    $("arch-box").hidden = false;
+  }
+
+  function applyManifest(manifest) {
+    var pkg = (manifest.abi || {})[PRIMARY_ABI] ||
+              (manifest.abi || {})[Object.keys(manifest.abi || {})[0]];
+    if (!pkg || !pkg.urls || !pkg.urls.length) throw new Error("清单里没有可用的安装包");
+
+    var version = manifest.version || "";
+    $("ver").textContent = version ? "v" + version : "最新版";
+    var bits = [];
+    if (pkg.size) bits.push(fmtSize(pkg.size));
+    if (manifest.released_at) bits.push(String(manifest.released_at).slice(0, 10));
+    bits.push("Android");
+    $("meta").textContent = bits.join(" · ");
+
+    var dl = $("dl");
+    dl.href = pkg.urls[0];
+    dl.removeAttribute("aria-disabled");
+    dl.textContent = version ? "下载 v" + version : "下载安装包";
+    $("under").textContent = "Android 手机 · 无需登录 · 数据都存在本机";
+
+    if (manifest.notes && String(manifest.notes).trim()) {
+      $("notes-card").hidden = false;
+      $("notes-box").querySelector("summary").textContent =
+        (version ? "v" + version + " 的更新说明" : "这次更新了什么");
+      $("notes").innerHTML = renderNotes(manifest.notes);
+    }
+
+    archList(manifest);
+    mirrorList(pkg);
+    $("foot").textContent = "占察计数助手" + (version ? " v" + version : "");
+  }
+
+  function applyFailure() {
+    var dl = $("dl");
+    dl.setAttribute("aria-disabled", "true");
+    dl.href = "#";
+    dl.textContent = "暂时取不到版本信息";
+    $("ver").textContent = "下载服务连不上";
+    $("meta").textContent = "换个时间再试，或者用下面的备用地址";
+    $("under").textContent = "也可以直接去 GitHub 发布页下载";
+    $("fallback-note").textContent =
+      "云端清单没取到，可能是网络问题。下面的发布页里，选文件名带 arm64-v8a 的那个包。";
+  }
+
+  // UA 判断只用来补提示条，不影响下载
+  var ua = navigator.userAgent;
+  if (/MicroMessenger/i.test(ua)) showNotice("wx");
+  if (/iPhone|iPad|iPod/i.test(ua) && !/Android/i.test(ua)) showNotice("ios");
+  if (!/Android/i.test(ua) && /HarmonyOS|ArkWeb/i.test(ua)) showNotice("harmony");
+
+  $("gh").href = GITHUB_RELEASES;
+  $("cnb").href = CNB_RELEASES;
+
+  // 清单源按顺序试：
+  //   1. 同源 ./latest.json —— Worker 上有这个代理；GitHub Pages 上没有，会 404
+  //   2. 缤纷云桶 —— 它的 CORS 是 *，Pages 上也能直接跨域读
+  // 请求不带自定义头、cache 用默认值：加 Cache-Control 之类会触发预检，
+  // 桶不一定应付得了 OPTIONS；绕缓存靠 ?t= 就够了。
+  var MANIFEST_SOURCES = [
+    "./latest.json",
+    "https://zhancha-app-packages.s3.bitiful.net/latest.json"
+  ];
+
+  function loadManifest(queue) {
+    if (!queue.length) return Promise.reject(new Error("所有清单源都不通"));
+    var url = queue[0];
+    return fetch(url + "?t=" + Date.now())
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .catch(function (err) {
+        if (window.console) console.warn("清单源失败：" + url + " → " + err.message);
+        return loadManifest(queue.slice(1));
+      });
+  }
+
+  loadManifest(MANIFEST_SOURCES.slice())
+    .then(applyManifest)
+    .catch(function (err) {
+      if (window.console) console.warn("latest.json:", err.message);
+      applyFailure();
+    });
+})();
+</script>
+</body>
+</html>
